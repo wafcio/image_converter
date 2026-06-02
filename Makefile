@@ -1,5 +1,10 @@
 .PHONY: lint test coverage ci check clean
 
+default: ci
+
+check:
+	cargo check
+
 lint:
 	cargo clippy -- -D warnings
 
@@ -10,10 +15,7 @@ coverage:
 	cargo llvm-cov --all-features 2>/dev/null || \
 		(echo "cargo-llvm-cov not installed. Run: cargo install cargo-llvm-cov" && exit 1)
 
-ci: lint test
-
-check:
-	cargo check
+ci: check lint test
 
 clean:
 	cargo clean
