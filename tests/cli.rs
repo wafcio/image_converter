@@ -1,5 +1,17 @@
 use assert_cmd::Command;
 use predicates::str::contains;
+use std::path::PathBuf;
+
+fn test_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("image-converter-test-{}", std::process::id()))
+}
+
+fn create_test_png(dir: &std::path::Path) -> PathBuf {
+    let path = dir.join("test.png");
+    let img = image::RgbaImage::new(100, 100);
+    img.save(&path).unwrap();
+    path
+}
 
 #[test]
 fn test_help_output() {
@@ -13,13 +25,26 @@ fn test_help_output() {
 }
 
 #[test]
-fn test_valid_args_output() {
+fn test_process_image() {
+    let dir = test_dir();
+    let out_dir = dir.join("out");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let input = create_test_png(&dir);
+
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
-    let assert = cmd.args(["input.png", "output/"]).assert();
-    assert
-        .success()
-        .stdout(contains("Input file:  input.png"))
-        .stdout(contains("Output dir:  output/"));
+    let assert = cmd
+        .args([
+            input.to_str().unwrap(),
+            out_dir.to_str().unwrap(),
+        ])
+        .assert();
+    assert.success().stdout(contains("Size:"));
+
+    assert!(out_dir.join("test.webp").exists(), "output file should exist");
+    assert!(out_dir.join("test.webp").metadata().unwrap().len() > 0, "output should not be empty");
+
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
