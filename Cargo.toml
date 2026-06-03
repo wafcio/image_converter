@@ -12,6 +12,7 @@ pedantic = "warn"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+image = { version = "0.25", features = ["webp"] }
 
 [dev-dependencies]
 assert_cmd = "2"
