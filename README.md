@@ -2,6 +2,12 @@
 
 A Rust CLI tool for converting and optimizing images.
 
+## Features
+
+- Reads common image formats (PNG, JPEG, etc.)
+- Resizes images wider than 800 px down to 800 px (preserves aspect ratio, Lanczos3 filter)
+- Saves output as WebP
+
 ## Usage
 
 ```bash
@@ -16,6 +22,8 @@ cargo run -- <INPUT> <OUTPUT>
 ```bash
 cargo run -- input.png output/
 ```
+
+The output file will be named `<input-stem>.webp` inside the given directory.
 
 ## Development
 
