@@ -13,6 +13,10 @@ struct Cli {
 
     /// Path to the output directory
     output: PathBuf,
+
+    /// WebP quality (0–100)
+    #[arg(long, default_value_t = 80.0)]
+    quality: f32,
 }
 
 fn run(cli: &Cli) {
@@ -23,7 +27,7 @@ fn run(cli: &Cli) {
         process::exit(1);
     }
 
-    match processor::process(&cli.input, &cli.output) {
+    match processor::process(&cli.input, &cli.output, cli.quality) {
         Ok(result) => {
             println!("Input:  {}", result.input_path.display());
             println!("Output: {}", result.output_path.display());
