@@ -17,7 +17,11 @@ pub struct ProcessResult {
     clippy::cast_sign_loss,
     clippy::cast_lossless
 )]
-pub fn process(input: &Path, output_dir: &Path) -> Result<ProcessResult, image::ImageError> {
+pub fn process(
+    input: &Path,
+    output_dir: &Path,
+    quality: f32,
+) -> Result<ProcessResult, Box<dyn std::error::Error>> {
     let img = image::open(input)?;
     let (w, h) = (img.width(), img.height());
 
@@ -44,7 +48,10 @@ pub fn process(input: &Path, output_dir: &Path) -> Result<ProcessResult, image::
         .to_string();
     let output_path = output_dir.join(format!("{stem}.webp"));
 
-    resized.save_with_format(&output_path, image::ImageFormat::WebP)?;
+    let rgb = resized.to_rgba8();
+    let encoder = webp::Encoder::from_rgba(&rgb, rgb.width(), rgb.height());
+    let webp_mem = encoder.encode(quality);
+    std::fs::write(&output_path, &*webp_mem)?;
 
     Ok(ProcessResult {
         input_path: input.to_path_buf(),
