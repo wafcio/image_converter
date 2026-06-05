@@ -2,8 +2,8 @@ use assert_cmd::Command;
 use predicates::str::contains;
 use std::path::PathBuf;
 
-fn test_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("image-converter-test-{}", std::process::id()))
+fn test_dir(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("image-converter-test-{name}-{}", std::process::id()))
 }
 
 fn create_test_png(dir: &std::path::Path) -> PathBuf {
@@ -22,12 +22,13 @@ fn test_help_output() {
         .stdout(contains("Converts and optimizes images"))
         .stdout(contains("<INPUT>"))
         .stdout(contains("<OUTPUT>"))
+        .stdout(contains("--format"))
         .stdout(contains("--quality"));
 }
 
 #[test]
-fn test_process_image() {
-    let dir = test_dir();
+fn test_process_webp() {
+    let dir = test_dir("webp");
     let out_dir = dir.join("out");
     std::fs::create_dir_all(&dir).unwrap();
 
@@ -35,22 +36,25 @@ fn test_process_image() {
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
-        .args([
-            input.to_str().unwrap(),
-            out_dir.to_str().unwrap(),
-        ])
+        .args([input.to_str().unwrap(), out_dir.to_str().unwrap()])
         .assert();
     assert.success().stdout(contains("Size:"));
 
-    assert!(out_dir.join("test.webp").exists(), "output file should exist");
-    assert!(out_dir.join("test.webp").metadata().unwrap().len() > 0, "output should not be empty");
+    assert!(
+        out_dir.join("test.webp").exists(),
+        "webp output should exist"
+    );
+    assert!(
+        out_dir.join("test.webp").metadata().unwrap().len() > 0,
+        "webp output should not be empty"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
-fn test_process_with_quality() {
-    let dir = test_dir();
+fn test_process_webp_with_quality() {
+    let dir = test_dir("webp_q");
     let out_dir = dir.join("out_q");
     std::fs::create_dir_all(&dir).unwrap();
 
@@ -67,8 +71,41 @@ fn test_process_with_quality() {
         .assert();
     assert.success().stdout(contains("Size:"));
 
-    assert!(out_dir.join("test.webp").exists(), "output file should exist");
-    assert!(out_dir.join("test.webp").metadata().unwrap().len() > 0, "output should not be empty");
+    assert!(
+        out_dir.join("test.webp").exists(),
+        "webp output should exist"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn test_process_avif() {
+    let dir = test_dir("avif");
+    let out_dir = dir.join("out_avif");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let input = create_test_png(&dir);
+
+    let mut cmd = Command::cargo_bin("image-converter").unwrap();
+    let assert = cmd
+        .args([
+            input.to_str().unwrap(),
+            out_dir.to_str().unwrap(),
+            "--format",
+            "avif",
+        ])
+        .assert();
+    assert.success().stdout(contains("Size:"));
+
+    assert!(
+        out_dir.join("test.avif").exists(),
+        "avif output should exist"
+    );
+    assert!(
+        out_dir.join("test.avif").metadata().unwrap().len() > 0,
+        "avif output should not be empty"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
