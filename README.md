@@ -6,7 +6,7 @@ A Rust CLI tool for converting and optimizing images.
 
 - Reads common image formats (PNG, JPEG, etc.)
 - Resizes images wider than 800 px down to 800 px (preserves aspect ratio, Lanczos3 filter)
-- Saves output as WebP
+- Encodes output as **WebP** or **AVIF** with adjustable quality
 
 ## Usage
 
@@ -21,16 +21,18 @@ cargo run -- <INPUT> <OUTPUT> [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--quality <0–100>` | WebP lossy encoding quality | `80` |
+| `--format <webp\|avif>` | Output format | `webp` |
+| `--quality <0–100>` | Encoding quality | `80` |
 
 ### Example
 
 ```bash
 cargo run -- input.png output/
 cargo run -- input.png output/ --quality 90
+cargo run -- input.png output/ --format avif
 ```
 
-The output file will be named `<input-stem>.webp` inside the given directory.
+The output file will be named `<input-stem>.<format>` inside the given directory.
 
 ## Development
 
