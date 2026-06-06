@@ -21,6 +21,18 @@ struct Cli {
     /// Encoding quality (0–100)
     #[arg(long, default_value_t = 80.0)]
     quality: f32,
+
+    /// Output width (optional; height is derived proportionally)
+    #[arg(long)]
+    width: Option<u32>,
+
+    /// Output height (optional; width is derived proportionally)
+    #[arg(long)]
+    height: Option<u32>,
+
+    /// Output filename stem (without extension; defaults to input filename)
+    #[arg(long)]
+    output_name: Option<String>,
 }
 
 fn run(cli: &Cli) {
@@ -31,7 +43,15 @@ fn run(cli: &Cli) {
         process::exit(1);
     }
 
-    match processor::process(&cli.input, &cli.output, cli.format, cli.quality) {
+    match processor::process(
+        &cli.input,
+        &cli.output,
+        cli.format,
+        cli.quality,
+        cli.width,
+        cli.height,
+        cli.output_name.as_deref(),
+    ) {
         Ok(result) => {
             println!("Input:  {}", result.input_path.display());
             println!("Output: {}", result.output_path.display());

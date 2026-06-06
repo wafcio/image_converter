@@ -4,8 +4,6 @@ use image::ImageEncoder;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-const MAX_WIDTH: u32 = 800;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
     Webp,
@@ -41,24 +39,46 @@ pub struct ProcessResult {
     clippy::cast_sign_loss,
     clippy::cast_lossless
 )]
+fn resolve_dimensions(
+    orig_w: u32,
+    orig_h: u32,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> (u32, u32) {
+    match (width, height) {
+        (Some(w), Some(h)) => (w, h),
+        (Some(w), None) => {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let h = (f64::from(orig_h) * f64::from(w) / f64::from(orig_w)).round() as u32;
+            (w, h.max(1))
+        }
+        (None, Some(h)) => {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let w = (f64::from(orig_w) * f64::from(h) / f64::from(orig_h)).round() as u32;
+            (w.max(1), h)
+        }
+        (None, None) => (orig_w, orig_h),
+    }
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless
+)]
 pub fn process(
     input: &Path,
     output_dir: &Path,
     format: OutputFormat,
     quality: f32,
+    width: Option<u32>,
+    height: Option<u32>,
+    output_name: Option<&str>,
 ) -> Result<ProcessResult, Box<dyn std::error::Error>> {
     let img = image::open(input)?;
     let (w, h) = (img.width(), img.height());
 
-    let (new_w, new_h) = if w > MAX_WIDTH {
-        let ratio = MAX_WIDTH as f64 / f64::from(w);
-        (
-            (f64::from(w) * ratio) as u32,
-            (f64::from(h) * ratio) as u32,
-        )
-    } else {
-        (w, h)
-    };
+    let (new_w, new_h) = resolve_dimensions(w, h, width, height);
 
     let resized = if (new_w, new_h) == (w, h) {
         img
@@ -66,11 +86,16 @@ pub fn process(
         img.resize_exact(new_w, new_h, Lanczos3)
     };
 
-    let stem = input
-        .file_stem()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
+    let stem = output_name.map_or_else(
+        || {
+            input
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        },
+        String::from,
+    );
     let output_path = output_dir.join(format!("{}.{}", stem, format.extension()));
 
     match format {
@@ -101,4 +126,33 @@ pub fn process(
         final_width: new_w,
         final_height: new_h,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_dimensions_both_some() {
+        assert_eq!(resolve_dimensions(100, 200, Some(50), Some(60)), (50, 60));
+    }
+
+    #[test]
+    fn test_resolve_dimensions_width_only() {
+        let (w, h) = resolve_dimensions(800, 600, Some(400), None);
+        assert_eq!(w, 400);
+        assert_eq!(h, 300);
+    }
+
+    #[test]
+    fn test_resolve_dimensions_height_only() {
+        let (w, h) = resolve_dimensions(800, 600, None, Some(300));
+        assert_eq!(w, 400);
+        assert_eq!(h, 300);
+    }
+
+    #[test]
+    fn test_resolve_dimensions_none() {
+        assert_eq!(resolve_dimensions(100, 200, None, None), (100, 200));
+    }
 }
