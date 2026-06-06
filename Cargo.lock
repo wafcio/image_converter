@@ -528,6 +528,7 @@ dependencies = [
  "clap",
  "image",
  "predicates",
+ "rayon",
  "webp",
 ]
 
