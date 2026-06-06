@@ -74,7 +74,7 @@ pub fn process(
     width: Option<u32>,
     height: Option<u32>,
     output_name: Option<&str>,
-) -> Result<ProcessResult, Box<dyn std::error::Error>> {
+) -> Result<ProcessResult, Box<dyn std::error::Error + Send + Sync>> {
     let img = image::open(input)?;
     let (w, h) = (img.width(), img.height());
 

@@ -32,8 +32,7 @@ fn test_help_output() {
         .stdout(contains("--format"))
         .stdout(contains("--quality"))
         .stdout(contains("--width"))
-        .stdout(contains("--height"))
-        .stdout(contains("--output-name"));
+        .stdout(contains("--height"));
 }
 
 #[test]
@@ -41,14 +40,15 @@ fn test_process_webp() {
     let dir = test_dir("webp");
     let out_dir = dir.join("out");
     std::fs::create_dir_all(&dir).unwrap();
-
-    let input = create_test_png(&dir);
+    create_test_png(&dir);
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
-        .args([input.to_str().unwrap(), out_dir.to_str().unwrap()])
+        .args([dir.to_str().unwrap(), out_dir.to_str().unwrap()])
         .assert();
-    assert.success().stdout(contains("Size:"));
+    assert.success()
+        .stdout(contains("OK:"))
+        .stdout(contains("Processed:"));
 
     assert!(
         out_dir.join("test.webp").exists(),
@@ -67,19 +67,18 @@ fn test_process_webp_with_quality() {
     let dir = test_dir("webp_q");
     let out_dir = dir.join("out_q");
     std::fs::create_dir_all(&dir).unwrap();
-
-    let input = create_test_png(&dir);
+    create_test_png(&dir);
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
         .args([
-            input.to_str().unwrap(),
+            dir.to_str().unwrap(),
             out_dir.to_str().unwrap(),
             "--quality",
             "50",
         ])
         .assert();
-    assert.success().stdout(contains("Size:"));
+    assert.success().stdout(contains("OK:"));
 
     assert!(
         out_dir.join("test.webp").exists(),
@@ -94,19 +93,18 @@ fn test_process_avif() {
     let dir = test_dir("avif");
     let out_dir = dir.join("out_avif");
     std::fs::create_dir_all(&dir).unwrap();
-
-    let input = create_test_png(&dir);
+    create_test_png(&dir);
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
         .args([
-            input.to_str().unwrap(),
+            dir.to_str().unwrap(),
             out_dir.to_str().unwrap(),
             "--format",
             "avif",
         ])
         .assert();
-    assert.success().stdout(contains("Size:"));
+    assert.success().stdout(contains("OK:"));
 
     assert!(
         out_dir.join("test.avif").exists(),
@@ -125,13 +123,12 @@ fn test_resize_width_only() {
     let dir = test_dir("resize_w");
     let out_dir = dir.join("out_w");
     std::fs::create_dir_all(&dir).unwrap();
-
-    let input = create_wide_test_png(&dir);
+    create_wide_test_png(&dir);
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
         .args([
-            input.to_str().unwrap(),
+            dir.to_str().unwrap(),
             out_dir.to_str().unwrap(),
             "--width",
             "200",
@@ -147,13 +144,12 @@ fn test_resize_height_only() {
     let dir = test_dir("resize_h");
     let out_dir = dir.join("out_h");
     std::fs::create_dir_all(&dir).unwrap();
-
-    let input = create_wide_test_png(&dir);
+    create_wide_test_png(&dir);
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
         .args([
-            input.to_str().unwrap(),
+            dir.to_str().unwrap(),
             out_dir.to_str().unwrap(),
             "--height",
             "100",
@@ -169,13 +165,12 @@ fn test_resize_both() {
     let dir = test_dir("resize_both");
     let out_dir = dir.join("out_both");
     std::fs::create_dir_all(&dir).unwrap();
-
-    let input = create_wide_test_png(&dir);
+    create_wide_test_png(&dir);
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
         .args([
-            input.to_str().unwrap(),
+            dir.to_str().unwrap(),
             out_dir.to_str().unwrap(),
             "--width",
             "100",
@@ -193,12 +188,11 @@ fn test_no_resize_by_default() {
     let dir = test_dir("noresize");
     let out_dir = dir.join("out_noresize");
     std::fs::create_dir_all(&dir).unwrap();
-
-    let input = create_wide_test_png(&dir);
+    create_wide_test_png(&dir);
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
-        .args([input.to_str().unwrap(), out_dir.to_str().unwrap()])
+        .args([dir.to_str().unwrap(), out_dir.to_str().unwrap()])
         .assert();
     // Without --width/--height, dimensions stay the same (400×200)
     assert.success().stdout(contains("400×200"));
@@ -207,37 +201,49 @@ fn test_no_resize_by_default() {
 }
 
 #[test]
-fn test_custom_output_name() {
-    let dir = test_dir("custom_name");
-    let out_dir = dir.join("out_name");
-    std::fs::create_dir_all(&dir).unwrap();
+fn test_missing_args_fails() {
+    let mut cmd = Command::cargo_bin("image-converter").unwrap();
+    let assert = cmd.arg("input_dir").assert();
+    assert
+        .failure()
+        .stderr(contains("required arguments were not provided"));
+}
 
-    let input = create_test_png(&dir);
+#[test]
+fn test_empty_dir_fails() {
+    let dir = test_dir("empty");
+    let out_dir = dir.join("out");
+    std::fs::create_dir_all(&dir).unwrap();
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
-        .args([
-            input.to_str().unwrap(),
-            out_dir.to_str().unwrap(),
-            "--output-name",
-            "kompresja_80",
-        ])
+        .args([dir.to_str().unwrap(), out_dir.to_str().unwrap()])
         .assert();
-    assert.success();
-
-    assert!(
-        out_dir.join("kompresja_80.webp").exists(),
-        "output with custom name should exist"
-    );
+    assert
+        .failure()
+        .stderr(contains("no image files found"));
 
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
-fn test_missing_args_fails() {
+fn test_multiple_files() {
+    let dir = test_dir("multi");
+    let out_dir = dir.join("out_multi");
+    std::fs::create_dir_all(&dir).unwrap();
+    create_test_png(&dir);
+    create_wide_test_png(&dir);
+
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
-    let assert = cmd.arg("input.png").assert();
+    let assert = cmd
+        .args([dir.to_str().unwrap(), out_dir.to_str().unwrap()])
+        .assert();
     assert
-        .failure()
-        .stderr(contains("required arguments were not provided"));
+        .success()
+        .stdout(contains("Processed: 2 successful, 0 failed"));
+
+    assert!(out_dir.join("test.webp").exists());
+    assert!(out_dir.join("wide.webp").exists());
+
+    std::fs::remove_dir_all(&dir).ok();
 }

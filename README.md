@@ -1,13 +1,13 @@
 # Image Converter
 
-A Rust CLI tool for converting and optimizing images.
+A Rust CLI tool for batch converting and optimizing images using all CPU cores.
 
 ## Features
 
-- Reads common image formats (PNG, JPEG, etc.)
-- Optionally resizes images with configurable `--width`/`--height` (preserves aspect ratio, Lanczos3 filter)
+- Batch processes all images in a directory (parallel via rayon)
+- Supports common formats: PNG, JPEG, GIF, BMP, TIFF, WebP, AVIF
+- Optionally resizes images with configurable `--width`/`--height` (Lanczos3 filter)
 - Encodes output as **WebP** or **AVIF** with adjustable quality
-- Custom output filename via `--output-name` (useful for multiple compression variants)
 
 ## Usage
 
@@ -15,8 +15,8 @@ A Rust CLI tool for converting and optimizing images.
 cargo run -- <INPUT> <OUTPUT> [OPTIONS]
 ```
 
-- `INPUT` — path to the input image file
-- `OUTPUT` — path to the output directory
+- `INPUT` — path to the input directory containing images
+- `OUTPUT` — path to the output directory (created if missing)
 
 ### Options
 
@@ -26,30 +26,24 @@ cargo run -- <INPUT> <OUTPUT> [OPTIONS]
 | `--quality <0–100>` | Encoding quality | `80` |
 | `--width <px>` | Output width (height derived proportionally) | — |
 | `--height <px>` | Output height (width derived proportionally) | — |
-| `--output-name <name>` | Output filename stem (without extension) | input filename |
 
 ### Examples
 
 ```bash
-# Convert to WebP (no resize)
-cargo run -- input.png output/
+# Convert all images in a directory to WebP (no resize)
+cargo run -- input_dir output/
 
-# Convert with quality
-cargo run -- input.png output/ --quality 90
+# Convert to AVIF with quality 90
+cargo run -- input_dir output/ --format avif --quality 90
 
-# Convert to AVIF
-cargo run -- input.png output/ --format avif
+# Resize all to width 400 (height proportional)
+cargo run -- input_dir output/ --width 400
 
-# Resize to width 400 (height proportional)
-cargo run -- input.png output/ --width 400
-
-# Custom output filename (useful for comparing compression levels)
-cargo run -- input.png output/ --quality 80 --output-name img_q80
-cargo run -- input.png output/ --quality 50 --output-name img_q50
+# Process 30 large photos on all CPU cores
+cargo run -- photos/ compressed/
 ```
 
-The output file will be named `<input-stem>.<format>` inside the given directory,
-or `<output-name>.<format>` when `--output-name` is provided.
+Each output file is named `<input-stem>.<format>` inside the given directory.
 
 ## Development
 
