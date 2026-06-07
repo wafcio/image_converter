@@ -1,3 +1,4 @@
+use crate::config::HeuristicsConfig;
 use clap::ValueEnum;
 use image::imageops::FilterType::Lanczos3;
 use image::ImageEncoder;
@@ -34,6 +35,70 @@ pub struct ProcessResult {
     pub final_height: u32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct HeuristicResult {
+    pub quality: f32,
+    pub lossless: bool,
+}
+
+/// Determine the best encoding parameters based on image dimensions and config.
+///
+/// Uses `image::image_dimensions()` (header-only) to avoid decoding the full image
+/// just for size classification.
+pub fn detect_best_config(
+    input: &Path,
+    heuristics: Option<&HeuristicsConfig>,
+) -> Result<HeuristicResult, Box<dyn std::error::Error + Send + Sync>> {
+    let Some(h) = heuristics else {
+        return Ok(HeuristicResult {
+            quality: 80.0,
+            lossless: false,
+        });
+    };
+
+    if !h.enabled {
+        return Ok(HeuristicResult {
+            quality: h.medium.quality,
+            lossless: h.medium.lossless,
+        });
+    }
+
+    let (w, h_px) = image::image_dimensions(input)?;
+    let file_size = std::fs::metadata(input)?.len();
+
+    // Small category: both dimensions at or below threshold
+    if let Some(true) = h.small.max_width.map_or(Some(false), |mw| Some(w <= mw))
+        && let Some(true) = h.small.max_height.map_or(Some(false), |mh| Some(h_px <= mh))
+    {
+        return Ok(HeuristicResult {
+            quality: h.small.quality,
+            lossless: h.small.lossless,
+        });
+    }
+
+    // Large category: either dimension exceeds threshold or file is big
+    let is_large_dim = h
+        .large
+        .min_dimension
+        .is_some_and(|md| w > md || h_px > md);
+    let is_large_file = h
+        .large
+        .min_file_size
+        .is_some_and(|ms| file_size > ms);
+    if is_large_dim || is_large_file {
+        return Ok(HeuristicResult {
+            quality: h.large.quality,
+            lossless: h.large.lossless,
+        });
+    }
+
+    // Fallback: medium
+    Ok(HeuristicResult {
+        quality: h.medium.quality,
+        lossless: h.medium.lossless,
+    })
+}
+
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -64,7 +129,8 @@ fn resolve_dimensions(
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    clippy::cast_lossless
+    clippy::cast_lossless,
+    clippy::too_many_arguments
 )]
 pub fn process(
     input: &Path,
@@ -74,7 +140,12 @@ pub fn process(
     width: Option<u32>,
     height: Option<u32>,
     output_name: Option<&str>,
+    heuristics: Option<&HeuristicsConfig>,
 ) -> Result<ProcessResult, Box<dyn std::error::Error + Send + Sync>> {
+    let heur = detect_best_config(input, heuristics)?;
+    let effective_quality = if heuristics.is_some() { heur.quality } else { quality };
+    let lossless = heur.lossless;
+
     let img = image::open(input)?;
     let (w, h) = (img.width(), img.height());
 
@@ -102,13 +173,22 @@ pub fn process(
         OutputFormat::Webp => {
             let rgb = resized.to_rgba8();
             let encoder = webp::Encoder::from_rgba(&rgb, rgb.width(), rgb.height());
-            let webp_mem = encoder.encode(quality);
-            std::fs::write(&output_path, &*webp_mem)?;
+            if lossless {
+                let webp_mem = encoder.encode_lossless();
+                std::fs::write(&output_path, &*webp_mem)?;
+            } else {
+                let webp_mem = encoder.encode(effective_quality);
+                std::fs::write(&output_path, &*webp_mem)?;
+            }
         }
         OutputFormat::Avif => {
             let file = std::fs::File::create(&output_path)?;
-            let encoder =
-                image::codecs::avif::AvifEncoder::new_with_speed_quality(file, 4, quality as u8);
+            let q = if lossless {
+                100u8
+            } else {
+                effective_quality as u8
+            };
+            let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(file, 4, q);
             encoder.write_image(
                 resized.as_bytes(),
                 resized.width(),
@@ -131,6 +211,86 @@ pub fn process(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_detect_no_heuristics() {
+        let dir = std::env::temp_dir().join("test_no_heuristic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.png");
+        let img = image::RgbaImage::new(200, 200);
+        img.save(&path).unwrap();
+
+        let result = detect_best_config(&path, None).unwrap();
+        assert!(!result.lossless);
+        assert_eq!(result.quality, 80.0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_detect_small_image() {
+        let dir = std::env::temp_dir().join("test_small_heuristic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("icon.png");
+        let img = image::RgbaImage::new(64, 64);
+        img.save(&path).unwrap();
+
+        let cfg = HeuristicsConfig::default();
+        let result = detect_best_config(&path, Some(&cfg)).unwrap();
+        assert!(result.lossless);
+        assert_eq!(result.quality, 100.0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_detect_large_image() {
+        let dir = std::env::temp_dir().join("test_large_heuristic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("photo.png");
+        let img = image::RgbaImage::new(1920, 1080);
+        img.save(&path).unwrap();
+
+        let cfg = HeuristicsConfig::default();
+        let result = detect_best_config(&path, Some(&cfg)).unwrap();
+        assert!(!result.lossless);
+        assert_eq!(result.quality, 75.0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_detect_medium_image() {
+        let dir = std::env::temp_dir().join("test_medium_heuristic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("medium.png");
+        let img = image::RgbaImage::new(500, 500);
+        img.save(&path).unwrap();
+
+        let cfg = HeuristicsConfig::default();
+        let result = detect_best_config(&path, Some(&cfg)).unwrap();
+        assert!(!result.lossless);
+        assert_eq!(result.quality, 80.0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_detect_heuristic_disabled() {
+        let dir = std::env::temp_dir().join("test_disabled_heuristic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("icon.png");
+        let img = image::RgbaImage::new(64, 64);
+        img.save(&path).unwrap();
+
+        let mut cfg = HeuristicsConfig::default();
+        cfg.enabled = false;
+        let result = detect_best_config(&path, Some(&cfg)).unwrap();
+        assert!(!result.lossless);
+        assert_eq!(result.quality, 80.0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn test_resolve_dimensions_both_some() {

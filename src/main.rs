@@ -1,3 +1,4 @@
+mod config;
 mod processor;
 
 use clap::Parser;
@@ -38,7 +39,7 @@ fn is_image_file(path: &Path) -> bool {
         .is_some_and(|e| matches!(e.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "tiff" | "tif" | "webp" | "avif"))
 }
 
-fn run(cli: &Cli) {
+fn run(cli: &Cli, cfg: Option<&config::Config>) {
     if !cli.output.exists()
         && let Err(e) = std::fs::create_dir_all(&cli.output)
     {
@@ -63,6 +64,8 @@ fn run(cli: &Cli) {
         process::exit(1);
     }
 
+    let heuristics = cfg.and_then(|c| if c.heuristics.enabled { Some(&c.heuristics) } else { None });
+
     let results: Vec<Result<processor::ProcessResult, Box<dyn std::error::Error + Send + Sync>>> = entries
         .par_iter()
         .map(|path| {
@@ -74,6 +77,7 @@ fn run(cli: &Cli) {
                 cli.width,
                 cli.height,
                 None,
+                heuristics,
             )
         })
         .collect();
@@ -102,7 +106,8 @@ fn run(cli: &Cli) {
 }
 
 fn main() {
-    run(&Cli::parse());
+    let cfg = config::Config::load();
+    run(&Cli::parse(), cfg.as_ref());
 }
 
 #[cfg(test)]

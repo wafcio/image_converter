@@ -1,6 +1,26 @@
 use assert_cmd::Command;
 use predicates::str::contains;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+const HEURISTIC_CONFIG: &str = r#"
+[heuristics]
+enabled = true
+
+[heuristics.small]
+max_width = 256
+max_height = 256
+lossless = true
+quality = 100
+
+[heuristics.large]
+min_dimension = 1200
+lossless = false
+quality = 50
+
+[heuristics.medium]
+lossless = false
+quality = 80
+"#;
 
 fn test_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("image-converter-test-{name}-{}", std::process::id()))
@@ -246,4 +266,72 @@ fn test_multiple_files() {
     assert!(out_dir.join("wide.webp").exists());
 
     std::fs::remove_dir_all(&dir).ok();
+}
+
+fn create_small_png(dir: &Path) -> PathBuf {
+    let path = dir.join("icon.png");
+    let img = image::RgbaImage::new(64, 64);
+    img.save(&path).unwrap();
+    path
+}
+
+fn create_large_png(dir: &Path) -> PathBuf {
+    let path = dir.join("photo.png");
+    let img = image::RgbaImage::new(1920, 1080);
+    img.save(&path).unwrap();
+    path
+}
+
+#[test]
+fn test_heuristic_with_config() {
+    let workspace = test_dir("heuristic_on");
+    let input = workspace.join("input");
+    let output = workspace.join("output");
+    std::fs::create_dir_all(&input).unwrap();
+
+    create_small_png(&input);
+    create_large_png(&input);
+
+    std::fs::write(workspace.join("config.toml"), HEURISTIC_CONFIG).unwrap();
+
+    let mut cmd = Command::cargo_bin("image-converter").unwrap();
+    let assert = cmd
+        .current_dir(&workspace)
+        .args([
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .assert();
+    assert.success().stdout(contains("Processed: 2 successful, 0 failed"));
+
+    assert!(output.join("icon.webp").exists(), "icon output should exist");
+    assert!(output.join("photo.webp").exists(), "photo output should exist");
+
+    std::fs::remove_dir_all(&workspace).ok();
+}
+
+#[test]
+fn test_heuristic_without_config() {
+    let workspace = test_dir("heuristic_off");
+    let input = workspace.join("input");
+    let output = workspace.join("output");
+    std::fs::create_dir_all(&input).unwrap();
+
+    create_small_png(&input);
+    create_large_png(&input);
+
+    let mut cmd = Command::cargo_bin("image-converter").unwrap();
+    let assert = cmd
+        .current_dir(&workspace)
+        .args([
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .assert();
+    assert.success().stdout(contains("Processed: 2 successful, 0 failed"));
+
+    assert!(output.join("icon.webp").exists(), "icon output should exist");
+    assert!(output.join("photo.webp").exists(), "photo output should exist");
+
+    std::fs::remove_dir_all(&workspace).ok();
 }
