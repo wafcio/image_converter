@@ -45,6 +45,37 @@ cargo run -- photos/ compressed/
 
 Each output file is named `<input-stem>.<format>` inside the given directory.
 
+### Auto-configuration
+
+By default all images are encoded with the same `--quality`. To automatically tune parameters per image, place a `config.toml` in the working directory:
+
+```toml
+[heuristics]
+enabled = true
+
+[heuristics.small]
+max_width = 256
+max_height = 256
+lossless = true
+quality = 100
+
+[heuristics.large]
+min_dimension = 1200
+min_file_size = 1048576   # 1 MB
+lossless = false
+quality = 75
+
+[heuristics.medium]
+lossless = false
+quality = 80
+```
+
+**Small** images (icons, thumbnails) use lossless WebP — no quality loss.
+**Large** images (photos over 1200px or 1 MB) use aggressive lossy compression.
+**Medium** images fall back to the default quality.
+
+Without `config.toml`, heuristics are disabled and `--quality` applies uniformly.
+
 ## Development
 
 ```bash
