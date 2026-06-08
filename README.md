@@ -26,6 +26,7 @@ cargo run -- <INPUT> <OUTPUT> [OPTIONS]
 | `--quality <0–100>` | Encoding quality | `80` |
 | `--width <px>` | Output width (height derived proportionally) | — |
 | `--height <px>` | Output height (width derived proportionally) | — |
+| `--watch` / `-w` | Watch input directory for new files and process them automatically | — |
 
 ### Examples
 
@@ -42,6 +43,19 @@ cargo run -- input_dir output/ --width 400
 # Process 30 large photos on all CPU cores
 cargo run -- photos/ compressed/
 ```
+
+### Watch Mode
+
+Start the program in the background — it processes all existing files, then watches the input directory for new images and converts them automatically:
+
+```bash
+cargo run -- input_dir output/ --watch
+
+# Or with short flag:
+cargo run -- input_dir output/ -w
+```
+
+While watching, drag or copy new images into the input directory — the converter picks them up within ~1.5 seconds. Press `Ctrl+C` to stop.
 
 Each output file is named `<input-stem>.<format>` inside the given directory.
 
