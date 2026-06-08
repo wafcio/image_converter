@@ -15,6 +15,7 @@ clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", features = ["webp", "avif"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+notify = "7"
 webp = "0.3"
 rayon = "1"
 
