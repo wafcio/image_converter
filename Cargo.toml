@@ -10,6 +10,9 @@ unsafe_code = "deny"
 all = "deny"
 pedantic = "warn"
 
+[lib]
+name = "image_converter"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", features = ["webp", "avif"] }
