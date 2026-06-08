@@ -104,6 +104,18 @@ enabled = false
 
 Without `config.toml`, heuristics and quality search are disabled, and `--quality` applies uniformly.
 
+## Building
+
+```bash
+# Build a debug binary (target/debug/image-converter)
+cargo build
+
+# Build a release binary (target/release/image-converter) — optimized and recommended for use
+cargo build --release
+```
+
+The resulting binary is self-contained and can be copied anywhere or linked into your `$PATH`.
+
 ## Development
 
 ```bash
