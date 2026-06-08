@@ -1,6 +1,8 @@
 use assert_cmd::Command;
 use predicates::str::contains;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::time::{Duration, Instant};
 
 const HEURISTIC_CONFIG: &str = r#"
 [heuristics]
@@ -52,7 +54,8 @@ fn test_help_output() {
         .stdout(contains("--format"))
         .stdout(contains("--quality"))
         .stdout(contains("--width"))
-        .stdout(contains("--height"));
+        .stdout(contains("--height"))
+        .stdout(contains("--watch"));
 }
 
 #[test]
@@ -334,4 +337,70 @@ fn test_heuristic_without_config() {
     assert!(output.join("photo.webp").exists(), "photo output should exist");
 
     std::fs::remove_dir_all(&workspace).ok();
+}
+
+#[test]
+fn test_watch_processes_existing() {
+    let dir = test_dir("watch_existing");
+    let out_dir = dir.join("out");
+    std::fs::create_dir_all(&dir).unwrap();
+    create_test_png(&dir);
+
+    let bin = assert_cmd::cargo::cargo_bin("image-converter");
+    let mut child = std::process::Command::new(bin)
+        .args([dir.to_str().unwrap(), out_dir.to_str().unwrap(), "--watch"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    std::thread::sleep(Duration::from_secs(4));
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        out_dir.join("test.webp").exists(),
+        "existing file should be processed in watch mode"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn test_watch_detects_new_file() {
+    let dir = test_dir("watch_new");
+    let out_dir = dir.join("out");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let bin = assert_cmd::cargo::cargo_bin("image-converter");
+    let mut child = std::process::Command::new(bin)
+        .args([dir.to_str().unwrap(), out_dir.to_str().unwrap(), "--watch"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    std::thread::sleep(Duration::from_secs(2));
+
+    let img = image::RgbaImage::new(200, 150);
+    img.save(dir.join("new.png")).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let output_path = out_dir.join("new.webp");
+    let mut found = false;
+    while Instant::now() < deadline {
+        if output_path.exists() {
+            found = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(found, "new file should be auto-processed in watch mode");
+
+    std::fs::remove_dir_all(&dir).ok();
 }
