@@ -1,4 +1,4 @@
-use crate::config::HeuristicsConfig;
+use crate::config::{HeuristicsConfig, QualitySearchConfig};
 use clap::ValueEnum;
 use image::imageops::FilterType::Lanczos3;
 use image::ImageEncoder;
@@ -126,6 +126,54 @@ fn resolve_dimensions(
     }
 }
 
+/// Encode an image to memory at a given quality and return the byte size.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn encode_to_memory(
+    img: &image::DynamicImage,
+    format: OutputFormat,
+    quality: f32,
+) -> usize {
+    match format {
+        OutputFormat::Webp => {
+            let rgb = img.to_rgba8();
+            let mem = webp::Encoder::from_rgba(&rgb, rgb.width(), rgb.height()).encode(quality);
+            mem.len()
+        }
+        OutputFormat::Avif => {
+            let mut buf = std::io::Cursor::new(Vec::new());
+            let encoder =
+                image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut buf, 4, quality as u8);
+            let _ = encoder.write_image(
+                img.as_bytes(),
+                img.width(),
+                img.height(),
+                img.color().into(),
+            );
+            buf.get_ref().len()
+        }
+    }
+}
+
+/// Search for the best quality level by encoding in-memory at multiple trial levels
+/// and picking the one with the best size-to-quality ratio (diminishing returns).
+///
+/// Tries qualities 70, 80, 90. Picks the lowest quality where stepping up yields
+/// less than 15% size reduction.
+#[allow(clippy::cast_precision_loss)]
+pub fn search_quality(img: &image::DynamicImage, format: OutputFormat) -> f32 {
+    let qualities = [70.0, 80.0, 90.0];
+    let sizes: Vec<usize> = qualities.iter().map(|&q| encode_to_memory(img, format, q)).collect();
+
+    for i in 0..qualities.len().saturating_sub(1) {
+        let improvement = 1.0 - sizes[i + 1] as f64 / sizes[i] as f64;
+        if improvement < 0.15 {
+            return qualities[i];
+        }
+    }
+
+    qualities[qualities.len() - 1]
+}
+
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -141,6 +189,7 @@ pub fn process(
     height: Option<u32>,
     output_name: Option<&str>,
     heuristics: Option<&HeuristicsConfig>,
+    quality_search: Option<&QualitySearchConfig>,
 ) -> Result<ProcessResult, Box<dyn std::error::Error + Send + Sync>> {
     let heur = detect_best_config(input, heuristics)?;
     let effective_quality = if heuristics.is_some() { heur.quality } else { quality };
@@ -155,6 +204,20 @@ pub fn process(
         img
     } else {
         img.resize_exact(new_w, new_h, Lanczos3)
+    };
+
+    let final_quality = if !lossless && quality_search.is_some_and(|qs| qs.enabled) {
+        let searched = search_quality(&resized, format);
+        if heuristics.is_some() {
+            eprintln!(
+                "  search: {} quality={:.0}",
+                input.file_name().unwrap_or_default().to_string_lossy(),
+                searched,
+            );
+        }
+        searched
+    } else {
+        effective_quality
     };
 
     let stem = output_name.map_or_else(
@@ -177,7 +240,7 @@ pub fn process(
                 let webp_mem = encoder.encode_lossless();
                 std::fs::write(&output_path, &*webp_mem)?;
             } else {
-                let webp_mem = encoder.encode(effective_quality);
+                let webp_mem = encoder.encode(final_quality);
                 std::fs::write(&output_path, &*webp_mem)?;
             }
         }
@@ -186,7 +249,7 @@ pub fn process(
             let q = if lossless {
                 100u8
             } else {
-                effective_quality as u8
+                final_quality as u8
             };
             let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(file, 4, q);
             encoder.write_image(
@@ -283,8 +346,7 @@ mod tests {
         let img = image::RgbaImage::new(64, 64);
         img.save(&path).unwrap();
 
-        let mut cfg = HeuristicsConfig::default();
-        cfg.enabled = false;
+        let cfg = HeuristicsConfig { enabled: false, ..Default::default() };
         let result = detect_best_config(&path, Some(&cfg)).unwrap();
         assert!(!result.lossless);
         assert_eq!(result.quality, 80.0);
@@ -314,5 +376,32 @@ mod tests {
     #[test]
     fn test_resolve_dimensions_none() {
         assert_eq!(resolve_dimensions(100, 200, None, None), (100, 200));
+    }
+
+    #[test]
+    fn test_search_quality_webp() {
+        let img = image::DynamicImage::new_rgba8(400, 300);
+        let q = search_quality(&img, OutputFormat::Webp);
+        assert!((70.0..=90.0).contains(&q), "quality should be 70–90, got {q}");
+    }
+
+    #[test]
+    fn test_search_quality_avif() {
+        let img = image::DynamicImage::new_rgba8(400, 300);
+        let q = search_quality(&img, OutputFormat::Avif);
+        assert!((70.0..=90.0).contains(&q), "quality should be 70–90, got {q}");
+    }
+
+    #[test]
+    fn test_search_quality_returns_lower_for_small_image() {
+        // Smaller images tend to get lower quality (diminishing returns kicks in earlier)
+        let small = image::DynamicImage::new_rgba8(100, 100);
+        let large = image::DynamicImage::new_rgba8(2000, 1500);
+        let q_small = search_quality(&small, OutputFormat::Webp);
+        let q_large = search_quality(&large, OutputFormat::Webp);
+        assert!(
+            q_small <= q_large,
+            "small image should get <= quality of large image ({q_small} vs {q_large})",
+        );
     }
 }

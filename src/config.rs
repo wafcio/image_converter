@@ -4,6 +4,10 @@ use std::path::Path;
 pub struct Config {
     #[serde(default)]
     pub heuristics: HeuristicsConfig,
+
+    /// Automatic quality search (tries multiple quality levels per image)
+    #[serde(default)]
+    pub quality_search: QualitySearchConfig,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -50,6 +54,13 @@ pub struct CategoryConfig {
     /// Encoding quality (0–100)
     #[serde(default = "default_quality")]
     pub quality: f32,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct QualitySearchConfig {
+    /// Enable automatic quality search (tries multiple quality levels per image)
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
 }
 
 fn default_enabled() -> bool { true }

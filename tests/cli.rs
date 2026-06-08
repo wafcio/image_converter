@@ -404,3 +404,37 @@ fn test_watch_detects_new_file() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+const QUALITY_SEARCH_CONFIG: &str = r"
+[heuristics]
+enabled = false
+
+[quality_search]
+enabled = true
+";
+
+#[test]
+fn test_quality_search_with_config() {
+    let workspace = test_dir("qsearch");
+    let input = workspace.join("input");
+    let output = workspace.join("output");
+    std::fs::create_dir_all(&input).unwrap();
+
+    create_test_png(&input);
+
+    std::fs::write(workspace.join("config.toml"), QUALITY_SEARCH_CONFIG).unwrap();
+
+    let mut cmd = Command::cargo_bin("image-converter").unwrap();
+    let assert = cmd
+        .current_dir(&workspace)
+        .args([input.to_str().unwrap(), output.to_str().unwrap()])
+        .assert();
+    assert.success().stdout(contains("OK:"));
+
+    assert!(
+        output.join("test.webp").exists(),
+        "webp output should exist with quality_search"
+    );
+
+    std::fs::remove_dir_all(&workspace).ok();
+}

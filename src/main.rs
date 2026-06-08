@@ -46,6 +46,7 @@ fn is_image_file(path: &Path) -> bool {
         .is_some_and(|e| matches!(e.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "tiff" | "tif" | "webp" | "avif"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_single(
     path: &Path,
     output: &Path,
@@ -54,8 +55,9 @@ fn process_single(
     width: Option<u32>,
     height: Option<u32>,
     heuristics: Option<&config::HeuristicsConfig>,
+    quality_search: Option<&config::QualitySearchConfig>,
 ) -> Result<processor::ProcessResult, String> {
-    processor::process(path, output, format, quality, width, height, None, heuristics)
+    processor::process(path, output, format, quality, width, height, None, heuristics, quality_search)
         .map_err(|e| format!("{}: {e}", path.file_name().unwrap_or_default().to_string_lossy()))
 }
 
@@ -99,10 +101,11 @@ fn run(cli: &Cli, cfg: Option<&config::Config>) {
     }
 
     let heuristics = cfg.and_then(|c| if c.heuristics.enabled { Some(&c.heuristics) } else { None });
+    let quality_search = cfg.as_ref().and_then(|c| if c.quality_search.enabled { Some(&c.quality_search) } else { None });
 
     let results: Vec<Result<processor::ProcessResult, String>> = entries
         .par_iter()
-        .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics))
+        .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search))
         .collect();
 
     let mut success = 0;
@@ -125,6 +128,7 @@ fn run_watch(cli: &Cli, cfg: Option<&config::Config>) {
     }
 
     let heuristics = cfg.and_then(|c| if c.heuristics.enabled { Some(&c.heuristics) } else { None });
+    let quality_search = cfg.as_ref().and_then(|c| if c.quality_search.enabled { Some(&c.quality_search) } else { None });
 
     // Process existing files first
     let entries: Vec<PathBuf> = match std::fs::read_dir(&cli.input) {
@@ -143,7 +147,7 @@ fn run_watch(cli: &Cli, cfg: Option<&config::Config>) {
         eprintln!("Processing existing files...");
         let results: Vec<Result<processor::ProcessResult, String>> = entries
             .par_iter()
-            .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics))
+            .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search))
             .collect();
 
         let mut success = 0;
@@ -195,7 +199,7 @@ fn run_watch(cli: &Cli, cfg: Option<&config::Config>) {
                 continue;
             }
 
-            match process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics) {
+            match process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search) {
                 Ok(r) => print_result(&Ok(r)),
                 Err(e) => eprintln!("FAIL:  {e}"),
             }

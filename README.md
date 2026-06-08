@@ -59,6 +59,17 @@ While watching, drag or copy new images into the input directory — the convert
 
 Each output file is named `<input-stem>.<format>` inside the given directory.
 
+### Quality Search
+
+Instead of using a fixed `--quality`, you can enable automatic quality search. The processor encodes each image in memory at quality levels 70, 80, and 90, then picks the level where stepping higher gives less than 15% size reduction (diminishing returns).
+
+```toml
+[quality_search]
+enabled = true
+```
+
+When `quality_search` is enabled, it overrides `--quality` for lossy encodes.
+
 ### Auto-configuration
 
 By default all images are encoded with the same `--quality`. To automatically tune parameters per image, place a `config.toml` in the working directory:
@@ -82,13 +93,16 @@ quality = 75
 [heuristics.medium]
 lossless = false
 quality = 80
+
+[quality_search]
+enabled = false
 ```
 
 **Small** images (icons, thumbnails) use lossless WebP — no quality loss.
 **Large** images (photos over 1200px or 1 MB) use aggressive lossy compression.
 **Medium** images fall back to the default quality.
 
-Without `config.toml`, heuristics are disabled and `--quality` applies uniformly.
+Without `config.toml`, heuristics and quality search are disabled, and `--quality` applies uniformly.
 
 ## Development
 
