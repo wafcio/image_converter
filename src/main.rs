@@ -1,7 +1,5 @@
-mod config;
-mod processor;
-
 use clap::Parser;
+use image_converter::{config, processor};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rayon::prelude::*;
 use std::collections::HashMap;

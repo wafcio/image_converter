@@ -45,6 +45,28 @@ pub struct HeuristicResult {
 ///
 /// Uses `image::image_dimensions()` (header-only) to avoid decoding the full image
 /// just for size classification.
+///
+/// When no heuristics are provided, returns the default quality (80.0, lossy).
+///
+/// ```
+/// use image_converter::image;
+/// use image_converter::processor;
+///
+/// let dir = std::env::temp_dir().join("image_converter_doc_detect");
+/// std::fs::create_dir_all(&dir).unwrap();
+/// let path = dir.join("icon.png");
+/// image::RgbaImage::new(64, 64).save(&path).unwrap();
+///
+/// let result = processor::detect_best_config(&path, None).unwrap();
+/// assert!(!result.lossless);
+/// assert_eq!(result.quality, 80.0);
+///
+/// std::fs::remove_dir_all(&dir).ok();
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if the image file cannot be read or its dimensions cannot be determined.
 pub fn detect_best_config(
     input: &Path,
     heuristics: Option<&HeuristicsConfig>,
@@ -159,6 +181,16 @@ fn encode_to_memory(
 ///
 /// Tries qualities 70, 80, 90. Picks the lowest quality where stepping up yields
 /// less than 15% size reduction.
+///
+/// ```
+/// use image_converter::image;
+/// use image_converter::processor;
+///
+/// let img = image::DynamicImage::new_rgba8(100, 100);
+/// let quality = processor::search_quality(&img, processor::OutputFormat::Webp);
+/// assert!((70.0..=90.0).contains(&quality));
+/// ```
+#[must_use]
 #[allow(clippy::cast_precision_loss)]
 pub fn search_quality(img: &image::DynamicImage, format: OutputFormat) -> f32 {
     let qualities = [70.0, 80.0, 90.0];
@@ -180,6 +212,11 @@ pub fn search_quality(img: &image::DynamicImage, format: OutputFormat) -> f32 {
     clippy::cast_lossless,
     clippy::too_many_arguments
 )]
+///
+/// # Errors
+///
+/// Returns an error if the input image cannot be read, the output directory cannot be written to,
+/// or the encoding process fails.
 pub fn process(
     input: &Path,
     output_dir: &Path,

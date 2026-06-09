@@ -100,6 +100,7 @@ impl Default for HeuristicsConfig {
 
 impl Config {
     /// Load config from `config.toml` in CWD. Returns `None` if the file doesn't exist.
+    #[must_use]
     pub fn load() -> Option<Self> {
         let path = Path::new("config.toml");
         if !path.exists() {
