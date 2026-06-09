@@ -8,6 +8,13 @@ A Rust CLI tool for batch converting and optimizing images using all CPU cores.
 - Supports common formats: PNG, JPEG, GIF, BMP, TIFF, WebP, AVIF
 - Optionally resizes images with configurable `--width`/`--height` (Lanczos3 filter)
 - Encodes output as **WebP** or **AVIF** with adjustable quality
+- Watch mode — automatically converts new files as they appear
+
+### Future improvements
+
+- GPU-accelerated resize and color conversion via compute shaders (`wgpu`).
+  Format encoding (WebP/AVIF) would remain on the CPU — no stable, cross-platform
+  GPU encoders exist for these formats.
 
 ## Usage
 
