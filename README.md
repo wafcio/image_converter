@@ -104,6 +104,52 @@ enabled = false
 
 Without `config.toml`, heuristics and quality search are disabled, and `--quality` applies uniformly.
 
+## Library
+
+This project can also be used as a library dependency in another Rust project.
+
+### Add to your `Cargo.toml`
+
+```toml
+# Local path
+image_converter = { path = "/path/to/image_converter" }
+
+# Or directly from GitHub
+image_converter = { git = "https://github.com/wafcio/image_converter" }
+```
+
+### Public API
+
+```rust
+use image_converter::{config, processor};
+
+// Process a single image
+let result = processor::process(
+    input_path,       // &Path
+    output_dir,       // &Path
+    processor::OutputFormat::Webp,  // or Avif
+    80.0,             // quality (0–100)
+    None,             // width (Option<u32>)
+    None,             // height (Option<u32>)
+    None,             // output_name (Option<&str>)
+    None,             // heuristics (Option<&HeuristicsConfig>)
+    None,             // quality_search (Option<&QualitySearchConfig>)
+)?;
+
+println!("{}x{} → {}x{}", result.original_width, result.original_height,
+    result.final_width, result.final_height);
+
+// Detect best encoding parameters based on image dimensions
+let heuristics = config::HeuristicsConfig::default();
+let params = processor::detect_best_config(input_path, Some(&heuristics))?;
+// HeuristicResult { quality, lossless }
+
+// Load config from config.toml (returns None if file missing)
+if let Some(cfg) = config::Config::load() {
+    // cfg.heuristics, cfg.quality_search
+}
+```
+
 ## Building
 
 ```bash
