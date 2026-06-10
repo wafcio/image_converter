@@ -15,12 +15,13 @@ name = "image_converter"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-image = { version = "0.25", features = ["webp", "avif"] }
+image = { version = "0.25", features = ["webp", "avif", "avif-native"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 notify = "7"
 webp = "0.3"
 rayon = "1"
+iqa = { version = "1.2", default-features = false, features = ["ssim"] }
 
 [dev-dependencies]
 assert_cmd = "2"

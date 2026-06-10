@@ -42,19 +42,25 @@ fn main() {
     // Test processor::OutputFormat is accessible
     let _fmt = processor::OutputFormat::Webp;
 
-    // Test processor::ProcessResult is accessible
-    // (can't construct it without running the function, but it should be there)
-
-    // Test processor::detect_best_config is accessible
-    // (would need a real image file, just checking it compiles)
-
     // Test config::Config is accessible
     let _ = config::Config::load();
 
     // Test config::HeuristicsConfig is accessible
     let _h = config::HeuristicsConfig::default();
 
-    println!("All types are accessible.");
+    // Test config::QualitySearchConfig is accessible
+    let _q = config::QualitySearchConfig::default();
+
+    // Test processor::search_quality is accessible
+    // (would need a real image, just checking it compiles)
+
+    // Test processor::encode_to_memory is accessible
+    // (same)
+
+    // Test processor::detect_best_config is accessible
+    // (same)
+
+    println!("All public API types are accessible.");
 }
 "#,
     )

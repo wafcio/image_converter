@@ -40,12 +40,56 @@ struct Cli {
     /// AVIF encoder speed (1–10, lower = slower/better compression, higher = faster)
     #[arg(long, default_value_t = 6)]
     speed: u8,
+
+    /// Enable quality search: tries multiple quality levels and selects the lowest
+    /// where SSIM >= threshold and output file is not larger than the original.
+    #[arg(long, default_value_t = false)]
+    quality_search: bool,
+
+    /// Minimum quality to try when quality search is enabled (0–100).
+    #[arg(long, default_value_t = 70)]
+    quality_search_min: u8,
+
+    /// Maximum quality to try when quality search is enabled (0–100).
+    #[arg(long, default_value_t = 95)]
+    quality_search_max: u8,
+
+    /// Step between quality levels when quality search is enabled.
+    #[arg(long, default_value_t = 5)]
+    quality_search_step: u8,
+
+    /// SSIM threshold for quality search (0.0–1.0). Higher = more faithful.
+    #[arg(long, default_value_t = 0.97)]
+    ssim_threshold: f64,
 }
 
 fn is_image_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| matches!(e.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "tiff" | "tif" | "webp" | "avif"))
+}
+
+/// Build quality search config from CLI flags and/or config.toml.
+///
+/// Priority: config.toml overrides → CLI flags fill remaining gaps.
+fn resolve_quality_search(cli: &Cli, cfg: Option<&config::Config>) -> Option<config::QualitySearchConfig> {
+    let from_cli = cli.quality_search;
+    let from_cfg = cfg.as_ref().and_then(|c| if c.quality_search.enabled { Some(&c.quality_search) } else { None });
+
+    match (from_cli, from_cfg) {
+        // Disabled both sides → no quality search
+        (false, None) => None,
+        // Only CLI enabled → use CLI params with defaults
+        (true, None) => Some(config::QualitySearchConfig {
+            enabled: true,
+            ssim_threshold: cli.ssim_threshold,
+            min_quality: cli.quality_search_min,
+            max_quality: cli.quality_search_max,
+            step: cli.quality_search_step,
+        }),
+        // Config values win over CLI when both exist
+        (false | true, Some(cfg_qs)) => Some(cfg_qs.clone()),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -104,7 +148,8 @@ fn run(cli: &Cli, cfg: Option<&config::Config>) {
     }
 
     let heuristics = cfg.and_then(|c| if c.heuristics.enabled { Some(&c.heuristics) } else { None });
-    let quality_search = cfg.as_ref().and_then(|c| if c.quality_search.enabled { Some(&c.quality_search) } else { None });
+    let qs_owned = resolve_quality_search(cli, cfg);
+    let quality_search = qs_owned.as_ref().map(|qs| qs as _);
 
     let results: Vec<Result<processor::ProcessResult, String>> = entries
         .par_iter()
@@ -131,7 +176,8 @@ fn run_watch(cli: &Cli, cfg: Option<&config::Config>) {
     }
 
     let heuristics = cfg.and_then(|c| if c.heuristics.enabled { Some(&c.heuristics) } else { None });
-    let quality_search = cfg.as_ref().and_then(|c| if c.quality_search.enabled { Some(&c.quality_search) } else { None });
+    let qs_owned = resolve_quality_search(cli, cfg);
+    let quality_search = qs_owned.as_ref().map(|qs| qs as _);
 
     // Process existing files first
     let entries: Vec<PathBuf> = match std::fs::read_dir(&cli.input) {

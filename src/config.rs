@@ -56,11 +56,52 @@ pub struct CategoryConfig {
     pub quality: f32,
 }
 
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+/// Automatic quality search configuration.
+///
+/// Encodes at multiple quality levels (from `max_quality` down to `min_quality`),
+/// skipping any level where the encoded output is **larger than the original file**.
+/// For acceptable levels, computes SSIM between original and decoded image, and
+/// picks the lowest quality where SSIM >= `ssim_threshold`. If no level passes both
+/// checks, the original file is copied as-is.
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct QualitySearchConfig {
-    /// Enable automatic quality search (tries multiple quality levels per image)
+    /// Enable automatic quality search.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+
+    /// SSIM threshold (0.0–1.0). A level is accepted when SSIM >= this value.
+    /// Higher = more faithful to original. Default: 0.97.
+    #[serde(default = "default_ssim_threshold")]
+    pub ssim_threshold: f64,
+
+    /// Minimum quality to try (0–100).
+    #[serde(default = "default_min_quality")]
+    pub min_quality: u8,
+
+    /// Maximum quality to try (0–100).
+    #[serde(default = "default_max_quality")]
+    pub max_quality: u8,
+
+    /// Step between quality levels when scanning.
+    #[serde(default = "default_step")]
+    pub step: u8,
+}
+
+fn default_ssim_threshold() -> f64 { 0.97 }
+fn default_min_quality() -> u8 { 70 }
+fn default_max_quality() -> u8 { 95 }
+fn default_step() -> u8 { 5 }
+
+impl Default for QualitySearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            ssim_threshold: default_ssim_threshold(),
+            min_quality: default_min_quality(),
+            max_quality: default_max_quality(),
+            step: default_step(),
+        }
+    }
 }
 
 fn default_enabled() -> bool { true }

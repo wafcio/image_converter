@@ -55,7 +55,9 @@ fn test_help_output() {
         .stdout(contains("--quality"))
         .stdout(contains("--width"))
         .stdout(contains("--height"))
-        .stdout(contains("--watch"));
+        .stdout(contains("--watch"))
+        .stdout(contains("--quality-search"))
+        .stdout(contains("--ssim-threshold"));
 }
 
 #[test]
@@ -405,24 +407,26 @@ fn test_watch_detects_new_file() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-const QUALITY_SEARCH_CONFIG: &str = r"
-[heuristics]
-enabled = false
-
-[quality_search]
-enabled = true
-";
-
 #[test]
 fn test_quality_search_with_config() {
-    let workspace = test_dir("qsearch");
+    let workspace = test_dir("qsearch_cfg");
     let input = workspace.join("input");
     let output = workspace.join("output");
     std::fs::create_dir_all(&input).unwrap();
 
     create_test_png(&input);
 
-    std::fs::write(workspace.join("config.toml"), QUALITY_SEARCH_CONFIG).unwrap();
+    std::fs::write(
+        workspace.join("config.toml"),
+        r#"
+[heuristics]
+enabled = false
+
+[quality_search]
+enabled = true
+"#,
+    )
+    .unwrap();
 
     let mut cmd = Command::cargo_bin("image-converter").unwrap();
     let assert = cmd
@@ -434,6 +438,33 @@ fn test_quality_search_with_config() {
     assert!(
         output.join("test.webp").exists(),
         "webp output should exist with quality_search"
+    );
+
+    std::fs::remove_dir_all(&workspace).ok();
+}
+
+#[test]
+fn test_quality_search_cli_flag() {
+    let workspace = test_dir("qsearch_cli");
+    let input = workspace.join("input");
+    let output = workspace.join("output");
+    std::fs::create_dir_all(&input).unwrap();
+
+    create_test_png(&input);
+
+    let mut cmd = Command::cargo_bin("image-converter").unwrap();
+    let assert = cmd
+        .args([
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+            "--quality-search",
+        ])
+        .assert();
+    assert.success().stdout(contains("OK:"));
+
+    assert!(
+        output.join("test.webp").exists(),
+        "webp output should exist with --quality-search flag"
     );
 
     std::fs::remove_dir_all(&workspace).ok();
