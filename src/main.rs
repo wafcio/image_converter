@@ -36,6 +36,10 @@ struct Cli {
     /// Watch input directory for new files and process them automatically
     #[arg(long, short)]
     watch: bool,
+
+    /// AVIF encoder speed (1–10, lower = slower/better compression, higher = faster)
+    #[arg(long, default_value_t = 6)]
+    speed: u8,
 }
 
 fn is_image_file(path: &Path) -> bool {
@@ -54,8 +58,9 @@ fn process_single(
     height: Option<u32>,
     heuristics: Option<&config::HeuristicsConfig>,
     quality_search: Option<&config::QualitySearchConfig>,
+    speed: u8,
 ) -> Result<processor::ProcessResult, String> {
-    processor::process(path, output, format, quality, width, height, None, heuristics, quality_search)
+    processor::process(path, output, format, quality, width, height, None, heuristics, quality_search, speed)
         .map_err(|e| format!("{}: {e}", path.file_name().unwrap_or_default().to_string_lossy()))
 }
 
@@ -103,7 +108,7 @@ fn run(cli: &Cli, cfg: Option<&config::Config>) {
 
     let results: Vec<Result<processor::ProcessResult, String>> = entries
         .par_iter()
-        .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search))
+        .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search, cli.speed))
         .collect();
 
     let mut success = 0;
@@ -143,19 +148,19 @@ fn run_watch(cli: &Cli, cfg: Option<&config::Config>) {
 
     if !entries.is_empty() {
         eprintln!("Processing existing files...");
-        let results: Vec<Result<processor::ProcessResult, String>> = entries
-            .par_iter()
-            .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search))
-            .collect();
+            let results: Vec<Result<processor::ProcessResult, String>> = entries
+                .par_iter()
+                .map(|path| process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search, cli.speed))
+                .collect();
 
-        let mut success = 0;
-        let mut failed = 0;
-        for result in &results {
-            print_result(result);
-            if result.is_ok() { success += 1; } else { failed += 1; }
+            let mut success = 0;
+            let mut failed = 0;
+            for result in &results {
+                print_result(result);
+                if result.is_ok() { success += 1; } else { failed += 1; }
+            }
+            println!("\nProcessed: {success} successful, {failed} failed");
         }
-        println!("\nProcessed: {success} successful, {failed} failed");
-    }
 
     // Set up file watcher
     let (tx, rx) = std::sync::mpsc::channel::<Result<Event, notify::Error>>();
@@ -197,7 +202,7 @@ fn run_watch(cli: &Cli, cfg: Option<&config::Config>) {
                 continue;
             }
 
-            match process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search) {
+            match process_single(path, &cli.output, cli.format, cli.quality, cli.width, cli.height, heuristics, quality_search, cli.speed) {
                 Ok(r) => print_result(&Ok(r)),
                 Err(e) => eprintln!("FAIL:  {e}"),
             }

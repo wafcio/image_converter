@@ -18,7 +18,8 @@ impl fmt::Display for OutputFormat {
 }
 
 impl OutputFormat {
-    fn extension(self) -> &'static str {
+    #[must_use]
+    pub fn extension(self) -> &'static str {
         match self {
             Self::Webp => "webp",
             Self::Avif => "avif",
@@ -148,30 +149,47 @@ fn resolve_dimensions(
     }
 }
 
-/// Encode an image to memory at a given quality and return the byte size.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn encode_to_memory(
+/// Encode an image to memory and return the encoded bytes.
+///
+/// When `lossless` is true:
+/// - WebP: uses `encode_lossless_with_quality` where `quality` controls
+///   compression effort (higher = more effort, smaller file, slower).
+/// - AVIF: encodes at quality=100 (near-lossless / best available).
+///
+/// When `lossless` is false (lossy): `quality` controls visual quality
+/// (higher = better quality, larger file).
+///
+/// # Errors
+///
+/// Returns an error if encoding fails.
+pub fn encode_to_memory(
     img: &image::DynamicImage,
     format: OutputFormat,
-    quality: f32,
-) -> usize {
+    quality: u8,
+    speed: u8,
+    lossless: bool,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     match format {
         OutputFormat::Webp => {
             let rgb = img.to_rgba8();
-            let mem = webp::Encoder::from_rgba(&rgb, rgb.width(), rgb.height()).encode(quality);
-            mem.len()
+            let encoder = webp::Encoder::from_rgba(&rgb, rgb.width(), rgb.height());
+            Ok(encoder.encode_simple(lossless, f32::from(quality)).unwrap().to_vec())
         }
         OutputFormat::Avif => {
+            let q = if lossless { 100u8 } else { quality };
             let mut buf = std::io::Cursor::new(Vec::new());
-            let encoder =
-                image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut buf, 4, quality as u8);
-            let _ = encoder.write_image(
+            let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(
+                &mut buf,
+                speed,
+                q,
+            );
+            encoder.write_image(
                 img.as_bytes(),
                 img.width(),
                 img.height(),
                 img.color().into(),
-            );
-            buf.get_ref().len()
+            )?;
+            Ok(buf.into_inner())
         }
     }
 }
@@ -187,23 +205,27 @@ fn encode_to_memory(
 /// use image_converter::processor;
 ///
 /// let img = image::DynamicImage::new_rgba8(100, 100);
-/// let quality = processor::search_quality(&img, processor::OutputFormat::Webp);
+/// let quality = processor::search_quality(&img, processor::OutputFormat::Webp, 6);
 /// assert!((70.0..=90.0).contains(&quality));
 /// ```
 #[must_use]
 #[allow(clippy::cast_precision_loss)]
-pub fn search_quality(img: &image::DynamicImage, format: OutputFormat) -> f32 {
-    let qualities = [70.0, 80.0, 90.0];
-    let sizes: Vec<usize> = qualities.iter().map(|&q| encode_to_memory(img, format, q)).collect();
+pub fn search_quality(img: &image::DynamicImage, format: OutputFormat, speed: u8) -> f32 {
+    let qualities = [70u8, 80, 90];
+    let sizes: Vec<usize> = qualities
+        .iter()
+        .filter_map(|&q| encode_to_memory(img, format, q, speed, false).ok())
+        .map(|v| v.len())
+        .collect();
 
     for i in 0..qualities.len().saturating_sub(1) {
         let improvement = 1.0 - sizes[i + 1] as f64 / sizes[i] as f64;
         if improvement < 0.15 {
-            return qualities[i];
+            return f32::from(qualities[i]);
         }
     }
 
-    qualities[qualities.len() - 1]
+    f32::from(qualities[qualities.len() - 1])
 }
 
 #[allow(
@@ -227,6 +249,7 @@ pub fn process(
     output_name: Option<&str>,
     heuristics: Option<&HeuristicsConfig>,
     quality_search: Option<&QualitySearchConfig>,
+    speed: u8,
 ) -> Result<ProcessResult, Box<dyn std::error::Error + Send + Sync>> {
     let heur = detect_best_config(input, heuristics)?;
     let effective_quality = if heuristics.is_some() { heur.quality } else { quality };
@@ -244,7 +267,7 @@ pub fn process(
     };
 
     let final_quality = if !lossless && quality_search.is_some_and(|qs| qs.enabled) {
-        let searched = search_quality(&resized, format);
+        let searched = search_quality(&resized, format, speed);
         if heuristics.is_some() {
             eprintln!(
                 "  search: {} quality={:.0}",
@@ -269,34 +292,8 @@ pub fn process(
     );
     let output_path = output_dir.join(format!("{}.{}", stem, format.extension()));
 
-    match format {
-        OutputFormat::Webp => {
-            let rgb = resized.to_rgba8();
-            let encoder = webp::Encoder::from_rgba(&rgb, rgb.width(), rgb.height());
-            if lossless {
-                let webp_mem = encoder.encode_lossless();
-                std::fs::write(&output_path, &*webp_mem)?;
-            } else {
-                let webp_mem = encoder.encode(final_quality);
-                std::fs::write(&output_path, &*webp_mem)?;
-            }
-        }
-        OutputFormat::Avif => {
-            let file = std::fs::File::create(&output_path)?;
-            let q = if lossless {
-                100u8
-            } else {
-                final_quality as u8
-            };
-            let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(file, 4, q);
-            encoder.write_image(
-                resized.as_bytes(),
-                resized.width(),
-                resized.height(),
-                resized.color().into(),
-            )?;
-        }
-    }
+    let data = encode_to_memory(&resized, format, final_quality as u8, speed, lossless)?;
+    std::fs::write(&output_path, &data)?;
 
     Ok(ProcessResult {
         input_path: input.to_path_buf(),
@@ -418,14 +415,14 @@ mod tests {
     #[test]
     fn test_search_quality_webp() {
         let img = image::DynamicImage::new_rgba8(400, 300);
-        let q = search_quality(&img, OutputFormat::Webp);
+        let q = search_quality(&img, OutputFormat::Webp, 6);
         assert!((70.0..=90.0).contains(&q), "quality should be 70–90, got {q}");
     }
 
     #[test]
     fn test_search_quality_avif() {
         let img = image::DynamicImage::new_rgba8(400, 300);
-        let q = search_quality(&img, OutputFormat::Avif);
+        let q = search_quality(&img, OutputFormat::Avif, 6);
         assert!((70.0..=90.0).contains(&q), "quality should be 70–90, got {q}");
     }
 
@@ -434,8 +431,8 @@ mod tests {
         // Smaller images tend to get lower quality (diminishing returns kicks in earlier)
         let small = image::DynamicImage::new_rgba8(100, 100);
         let large = image::DynamicImage::new_rgba8(2000, 1500);
-        let q_small = search_quality(&small, OutputFormat::Webp);
-        let q_large = search_quality(&large, OutputFormat::Webp);
+        let q_small = search_quality(&small, OutputFormat::Webp, 6);
+        let q_large = search_quality(&large, OutputFormat::Webp, 6);
         assert!(
             q_small <= q_large,
             "small image should get <= quality of large image ({q_small} vs {q_large})",

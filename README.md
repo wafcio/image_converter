@@ -33,6 +33,7 @@ cargo run -- <INPUT> <OUTPUT> [OPTIONS]
 | `--quality <0–100>` | Encoding quality | `80` |
 | `--width <px>` | Output width (height derived proportionally) | — |
 | `--height <px>` | Output height (width derived proportionally) | — |
+| `--speed <1–10>` | AVIF encoder speed (lower = slower/better compression) | `6` |
 | `--watch` / `-w` | Watch input directory for new files and process them automatically | — |
 
 ### Examples
@@ -141,6 +142,7 @@ let result = processor::process(
     None,             // output_name (Option<&str>)
     None,             // heuristics (Option<&HeuristicsConfig>)
     None,             // quality_search (Option<&QualitySearchConfig>)
+    6,                // speed (1–10, AVIF encoder speed)
 )?;
 
 println!("{}x{} → {}x{}", result.original_width, result.original_height,
@@ -150,6 +152,14 @@ println!("{}x{} → {}x{}", result.original_width, result.original_height,
 let heuristics = config::HeuristicsConfig::default();
 let params = processor::detect_best_config(input_path, Some(&heuristics))?;
 // HeuristicResult { quality, lossless }
+
+// Encode an image to memory (useful for downstream crates that need bytes, not a file)
+let bytes: Vec<u8> = processor::encode_to_memory(
+    &image,                              // &DynamicImage
+    processor::OutputFormat::Avif,
+    80,                                  // quality (0–100)
+    6,                                   // speed (1–10)
+)?;
 
 // Load config from config.toml (returns None if file missing)
 if let Some(cfg) = config::Config::load() {
